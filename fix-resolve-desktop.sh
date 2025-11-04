@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# fix-resolve-desktop.sh
-# Fix DaVinci Resolve .desktop entry:
-# - Prepend "progl " to Exec line
-# - Replace icon path with /opt/resolve/graphics/DV_Resolve.png
+# fix-davinci-desktop-files.sh
+# Fix DaVinci Resolve desktop entries:
+# 1. /usr/share/applications/DaVinciResolve.desktop
+#    - Prepend "progl " to Exec line
+#    - Replace Icon with /opt/resolve/graphics/DV_Resolve.png
+# 2. /usr/share/applications/DaVinciControlPanelsSetup.desktop
+#    - Replace Icon with /opt/resolve/graphics/DV_Panels.png
 
 set -euo pipefail
 
-DESKTOP_FILE="/usr/share/applications/DaVinciResolve.desktop"
-ICON_PATH="/opt/resolve/graphics/DV_Resolve.png"
+RESOLVE_FILE="/usr/share/applications/DaVinciResolve.desktop"
+PANELS_FILE="/usr/share/applications/DaVinciControlPanelsSetup.desktop"
+
+RESOLVE_ICON="/opt/resolve/graphics/DV_Resolve.png"
+PANELS_ICON="/opt/resolve/graphics/DV_Panels.png"
 
 # --- Ask for sudo if needed ---
 if [[ "$EUID" -ne 0 ]]; then
@@ -15,35 +21,45 @@ if [[ "$EUID" -ne 0 ]]; then
   exec sudo "$0"
 fi
 
-# --- Validation ---
-if [[ ! -f "$DESKTOP_FILE" ]]; then
-  echo "❌ File not found: $DESKTOP_FILE"
-  exit 1
-fi
+fix_desktop() {
+  local file="$1"
+  local new_icon="$2"
+  local prepend_progl="${3:-false}"
 
-# --- Backup before editing ---
-cp "$DESKTOP_FILE" "$DESKTOP_FILE.bak"
-echo "💾 Backup created at: ${DESKTOP_FILE}.bak"
+  if [[ ! -f "$file" ]]; then
+    echo "❌ File not found: $file"
+    return
+  fi
 
-# --- Update Exec line (prepend 'progl ' if missing) ---
-if grep -qE '^Exec=progl ' "$DESKTOP_FILE"; then
-  echo "⚠️  'progl' already present in Exec line. Skipping."
-else
-  sed -i -E '0,/^Exec=/s|^(Exec=)(.*)|\1progl \2|' "$DESKTOP_FILE"
-  echo "✅ Updated Exec line to include 'progl'."
-fi
+  cp "$file" "$file.bak"
+  echo "💾 Backup created: ${file}.bak"
 
-# --- Update Icon line ---
-if grep -qE '^Icon=' "$DESKTOP_FILE"; then
-  sed -i -E "0,/^Icon=/s|^Icon=.*|Icon=${ICON_PATH}|" "$DESKTOP_FILE"
-  echo "✅ Updated icon path."
-else
-  echo "⚠️  No Icon line found, adding one."
-  echo "Icon=${ICON_PATH}" >> "$DESKTOP_FILE"
-fi
+  if [[ "$prepend_progl" == "true" ]]; then
+    if grep -qE '^Exec=progl ' "$file"; then
+      echo "⚠️  'progl' already present in Exec line of $(basename "$file")."
+    else
+      sed -i -E '0,/^Exec=/s|^(Exec=)(.*)|\1progl \2|' "$file"
+      echo "✅ Added 'progl' to Exec line in $(basename "$file")."
+    fi
+  fi
 
-# --- Show result ---
+  if grep -qE '^Icon=' "$file"; then
+    sed -i -E "0,/^Icon=/s|^Icon=.*|Icon=${new_icon}|" "$file"
+    echo "✅ Updated Icon path in $(basename "$file")."
+  else
+    echo "⚠️  No Icon line found, adding one to $(basename "$file")."
+    echo "Icon=${new_icon}" >> "$file"
+  fi
+
+  echo "🔍 Final result for $(basename "$file"):"
+  grep -E '^(Exec|Icon)=' "$file"
+  echo
+}
+
+echo "🔧 Fixing DaVinci Resolve desktop entries..."
 echo
-echo "🔍 Final result:"
-grep -E '^(Exec|Icon)=' "$DESKTOP_FILE"
 
+fix_desktop "$RESOLVE_FILE" "$RESOLVE_ICON" true
+fix_desktop "$PANELS_FILE" "$PANELS_ICON" false
+
+echo "✅ All done!"
